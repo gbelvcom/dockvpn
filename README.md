@@ -106,6 +106,7 @@ People have successfully used this VPN server with clients such as:
 - OpenVPN on Linux,
 - Viscosity on OSX (#25),
 - Tunnelblick on OSX,
+- OpenVPN Connect on OSX,
 - OpenVPN Connect on iOS,
 - (some VPN client on Android but I can't remember which).
 
