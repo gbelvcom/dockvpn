@@ -1,5 +1,7 @@
 # OpenVPN for Docker
 
+[![Docker Pulls](https://img.shields.io/docker/pulls/am6puk/dockvpn)](https://hub.docker.com/r/am6puk/dockvpn)
+
 **the original project - [jpetazzo/dockvpn](https://github.com/jpetazzo/dockvpn)** and it has its own [automatic build on dockerhub](https://hub.docker.com/r/jpetazzo/dockvpn/).
 
 
