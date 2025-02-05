@@ -1,27 +1,37 @@
 #!/bin/sh
 set -e
 
-[ -d /dev/net ] ||
-    mkdir -p /dev/net
-[ -c /dev/net/tun ] ||
-    mknod /dev/net/tun c 10 200
+[ -d /dev/net ] || mkdir -p /dev/net
+[ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
 
 cd /etc/openvpn
-# This file tells `serveconfig` that there is a config there
-touch placeholder
-[ -f dh.pem ] ||
-    openssl dhparam -out dh.pem 2048
-[ -f key.pem ] ||
-#    openssl genrsa -out key.pem 2048
-    openssl genrsa -aes256 -out key.pem 2048
-    openvpn --genkey --secret tls-auth.key
-chmod 600 key.pem
-[ -f csr.pem ] ||
-    openssl req -new -key key.pem -out csr.pem -subj /CN=OpenVPN/
-[ -f cert.pem ] ||
-    openssl x509 -req -in csr.pem -out cert.pem -signkey key.pem -days 24855
 
-[ -f tcp443.conf ] || cat >tcp443.conf <<EOF
+# Генерация ключей и сертификатов
+if [ ! -f dh.pem ]; then
+    openssl dhparam -out dh.pem 4096
+fi
+
+if [ ! -f key.pem ]; then
+    openssl genrsa -out key.pem 4096
+    chmod 600 key.pem
+fi
+
+if [ ! -f csr.pem ]; then
+    openssl req -new -key key.pem -out csr.pem -subj /CN=OpenVPN/
+fi
+
+if [ ! -f cert.pem ]; then
+    openssl x509 -req -in csr.pem -out cert.pem -signkey key.pem -days 24855
+fi
+
+# Генерируем tls-crypt ключ, если его нет
+if [ ! -f tls-auth.key ]; then
+    openvpn --genkey --secret tls-auth.key
+fi
+
+# Конфиг OpenVPN TCP 443
+if [ ! -f tcp443.conf ]; then
+    cat >tcp443.conf <<EOF
 server 192.168.255.0 255.255.255.128
 verb 3
 duplicate-cn
@@ -29,23 +39,31 @@ key key.pem
 ca cert.pem
 cert cert.pem
 dh dh.pem
+tls-crypt tls-auth.key
 keepalive 10 60
 persist-key
 persist-tun
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
+push "block-outside-dns"
 push "redirect-gateway def1 bypass-dhcp"
-client-to-client
+cipher AES-256-CBC
+auth SHA512
+tls-version-min 1.2
 push "route 192.168.255.0 255.255.255.128 net_gateway"
-
 proto tcp-server
-port 8443
-tls-crypt tls-auth.key
+port 443
 dev tun443
-status openvpn-status-443.log
+# status openvpn-status-443.log
+status /dev/null
+log /dev/null
+verb 0
 EOF
+fi
 
-[ -f udp1194.conf ] || cat >udp1194.conf <<EOF
+# Конфиг OpenVPN UDP 1194
+if [ ! -f udp1194.conf ]; then
+    cat >udp1194.conf <<EOF
 server 192.168.255.128 255.255.255.128
 verb 3
 duplicate-cn
@@ -53,45 +71,53 @@ key key.pem
 ca cert.pem
 cert cert.pem
 dh dh.pem
+tls-crypt tls-auth.key
 keepalive 10 60
 persist-key
 persist-tun
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
+push "block-outside-dns"
 push "redirect-gateway def1 bypass-dhcp"
-client-to-client
+cipher AES-256-CBC
+auth SHA512
+tls-version-min 1.2
 push "route 192.168.255.0 255.255.255.128 net_gateway"
-
 proto udp
 port 1194
 dev tun1194
-status openvpn-status-1194.log
+# status openvpn-status-1194.log
+status /dev/null
+log /dev/null
+verb 0
 EOF
+fi
 
-MY_IP_ADDR=$(curl -s http://myip.enix.org/REMOTE_ADDR)
+MY_IP_ADDR=$(curl -s http://ifconfig.me)
 [ "$MY_IP_ADDR" ] || {
     echo "Sorry, I could not figure out my public IP address."
-    echo "(I use http://myip.enix.org/REMOTE_ADDR/ for that purpose.)"
     exit 1
 }
 
-[ -f client.ovpn ] || cat >client.ovpn <<EOF
+# Генерация клиентского .ovpn файла
+if [ ! -f client.ovpn ]; then
+    cat >client.ovpn <<EOF
 client
 nobind
 dev tun
 redirect-gateway def1
 
 <key>
-`cat key.pem`
+$(cat key.pem)
 </key>
 <cert>
-`cat cert.pem`
+$(cat cert.pem)
 </cert>
 <ca>
-`cat cert.pem`
+$(cat cert.pem)
 </ca>
 <dh>
-`cat dh.pem`
+$(cat dh.pem)
 </dh>
 
 <connection>
@@ -102,18 +128,31 @@ remote $MY_IP_ADDR 1194 udp
 remote $MY_IP_ADDR 443 tcp-client
 </connection>
 EOF
+fi
 
-[ -f client.http ] || cat >client.http <<EOF
+# Раздача .ovpn через браузер
+if [ ! -f client.http ]; then
+    cat >client.http <<EOF
 HTTP/1.0 200 OK
 Content-Type: application/x-openvpn-profile
-Content-Length: `wc -c client.ovpn`
+Content-Length: $(wc -c < client.ovpn)
 
-`cat client.ovpn`
+$(cat client.ovpn)
 EOF
+fi
 
+# Запускаем iptables
 iptables -t nat -A POSTROUTING -s 192.168.255.0/24 -o eth0 -j MASQUERADE
+iptables -A INPUT -p tcp --dport 8080 -m connlimit --connlimit-above 1 -j REJECT
 
-touch tcp443.log udp1194.log http8080.log
-while true ; do openvpn tcp443.conf ; done >> tcp443.log &
-while true ; do openvpn udp1194.conf ; done >> udp1194.log &
-tail -F *.log
+# Запускаем obfsproxy для маскировки OpenVPN
+obfsproxy obfs3 --dest=localhost:1194 server --listen 0.0.0.0:8443 &
+obfsproxy obfs3 --dest=localhost:443 server --listen 0.0.0.0:9443 &
+
+# Запускаем OpenVPN серверы
+# touch tcp443.log udp1194.log http8080.log
+# while true; do openvpn tcp443.conf; done >> tcp443.log &
+# while true; do openvpn udp1194.conf; done >> udp1194.log &
+# tail -F *.log
+while true; do openvpn tcp443.conf > /dev/null 2>&1; done &
+while true; do openvpn udp1194.conf > /dev/null 2>&1; done &
