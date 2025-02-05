@@ -12,7 +12,9 @@ touch placeholder
 [ -f dh.pem ] ||
     openssl dhparam -out dh.pem 2048
 [ -f key.pem ] ||
-    openssl genrsa -out key.pem 2048
+#    openssl genrsa -out key.pem 2048
+    openssl genrsa -aes256 -out key.pem 2048
+    openvpn --genkey --secret tls-auth.key
 chmod 600 key.pem
 [ -f csr.pem ] ||
     openssl req -new -key key.pem -out csr.pem -subj /CN=OpenVPN/
@@ -31,10 +33,14 @@ keepalive 10 60
 persist-key
 persist-tun
 push "dhcp-option DNS 8.8.8.8"
-push "dhcp-option DNS 8.8.4.4"
+push "dhcp-option DNS 1.1.1.1"
+push "redirect-gateway def1 bypass-dhcp"
+client-to-client
+push "route 192.168.255.0 255.255.255.128 net_gateway"
 
 proto tcp-server
-port 443
+port 8443
+tls-crypt tls-auth.key
 dev tun443
 status openvpn-status-443.log
 EOF
@@ -51,7 +57,10 @@ keepalive 10 60
 persist-key
 persist-tun
 push "dhcp-option DNS 8.8.8.8"
-push "dhcp-option DNS 8.8.4.4"
+push "dhcp-option DNS 1.1.1.1"
+push "redirect-gateway def1 bypass-dhcp"
+client-to-client
+push "route 192.168.255.0 255.255.255.128 net_gateway"
 
 proto udp
 port 1194

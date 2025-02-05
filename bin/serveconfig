@@ -16,8 +16,25 @@ while ! [ -f client.http ]; do
     sleep 3
 done
 
-echo "https://$(curl -s http://myip.enix.org/REMOTE_ADDR):8080/"
+echo "https://$(curl -s https://ifconfig.me):8080/"
+
+# Запускаем socat в фоне
 socat -d -d \
     OPENSSL-LISTEN:8080,fork,reuseaddr,key=key.pem,certificate=cert.pem,verify=0 \
     EXEC:'cat client.http' \
-    2>> http8080.log
+    2>> http8080.log &
+
+SOCAT_PID=$!  # Запоминаем PID процесса socat
+
+# Следим за скачиванием файла и удаляем его после первого доступа
+while true; do
+    if lsof -t client.http > /dev/null; then
+        echo "✅ Файл client.http был скачан. Удаляем..."
+        sleep 2
+        rm -f client.http
+        echo "🚪 Останавливаем HTTP-сервер."
+        kill $SOCAT_PID  # Останавливаем процесс socat
+        break
+    fi
+    sleep 2
+done
