@@ -146,8 +146,8 @@ iptables -t nat -A POSTROUTING -s 192.168.255.0/24 -o eth0 -j MASQUERADE
 iptables -A INPUT -p tcp --dport 8080 -m connlimit --connlimit-above 1 -j REJECT
 
 # Запускаем obfsproxy для маскировки OpenVPN
-obfs4proxy -enableLogging -logLevel=ERROR -proxy -listen 0.0.0.0:8443 -target 127.0.0.1:1194 &
-obfs4proxy -enableLogging -logLevel=ERROR -proxy -listen 0.0.0.0:9443 -target 127.0.0.1:443 &
+/usr/local/bin/obfs4proxy -enableLogging=false -logLevel=ERROR -proxy -listen 0.0.0.0:8443 -target 127.0.0.1:1194 &
+/usr/local/bin/obfs4proxy -enableLogging=false -logLevel=ERROR -proxy -listen 0.0.0.0:9443 -target 127.0.0.1:443 &
 
 # Запускаем OpenVPN серверы
 # touch tcp443.log udp1194.log http8080.log
