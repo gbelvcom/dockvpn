@@ -190,6 +190,8 @@ EOF
 
 stunnel /etc/stunnel/stunnel.conf &
 
+touch /etc/openvpn/placeholder
+
 # Пробрасываем трафик для клиентов VPN
 # Убедитесь, что интерфейс 'eth0' действительно существует. Иначе замените на нужный.
 iptables -t nat -A POSTROUTING -s 192.168.255.0/24 -o eth0 -j MASQUERADE

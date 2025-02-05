@@ -8,8 +8,9 @@
 Quick instructions:
 
 ```bash
-CID=$(docker run -d --privileged -p 1194:1194/udp -p 443:443/tcp am6puk/dockvpn)
-docker run -t -i -p 8080:8080 --volumes-from $CID am6puk/dockvpn serveconfig
+docker build -t dockvpn .
+CID=$(docker run -d --privileged --name dockvpn -p 1194:1194/udp -p 443:443/tcp)
+docker run -ti -p 8080:8080 --volumes-from "$CID" gbelvcom/dockvpn serveconfig
 ```
 
 ```
