@@ -26,7 +26,7 @@ fi
 
 # Генерируем tls-crypt ключ, если его нет
 if [ ! -f tls-auth.key ]; then
-    openvpn --genkey --secret tls-auth.key
+    openvpn --genkey secret /etc/openvpn/tls-auth.key
 fi
 
 # Конфиг OpenVPN TCP 443
