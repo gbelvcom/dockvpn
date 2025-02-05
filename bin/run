@@ -21,6 +21,7 @@ chmod 600 key.pem
 # Конфигурация OpenVPN (TCP 443)
 [ -f tcp443.conf ] || cat >tcp443.conf <<EOF
 server 192.168.255.0 255.255.255.128
+topology subnet
 verb 3
 duplicate-cn
 key key.pem
@@ -33,7 +34,8 @@ persist-tun
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
-cipher AES-256-CBC
+data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305
+data-ciphers-fallback AES-256-CBC
 auth SHA512
 tls-version-min 1.2
 proto tcp-server
@@ -45,6 +47,7 @@ EOF
 # Конфигурация OpenVPN (UDP 1194)
 [ -f udp1194.conf ] || cat >udp1194.conf <<EOF
 server 192.168.255.128 255.255.255.128
+topology subnet
 verb 3
 duplicate-cn
 key key.pem
@@ -57,7 +60,8 @@ persist-tun
 push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
-cipher AES-256-CBC
+data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305
+data-ciphers-fallback AES-256-CBC
 auth SHA512
 tls-version-min 1.2
 proto udp
@@ -78,21 +82,14 @@ MY_IP_ADDR=$(curl -s http://ifconfig.me)
 client
 nobind
 dev tun
-redirect-gateway def1
+topology subnet
+redirect-gateway def1 bypass-dhcp
+remote-cert-tls server
+resolv-retry infinite
+persist-key
+persist-tun
 
-<key>
-`cat key.pem`
-</key>
-<cert>
-`cat cert.pem`
-</cert>
-<ca>
-`cat cert.pem`
-</ca>
-<dh>
-`cat dh.pem`
-</dh>
-
+# Серверы (UDP + TCP)
 <connection>
 remote $MY_IP_ADDR 1194 udp
 </connection>
@@ -102,10 +99,28 @@ remote $MY_IP_ADDR 443 tcp-client
 proto tcp
 </connection>
 
-cipher AES-256-CBC
+# Шифрование и безопасность
 data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305
+data-ciphers-fallback AES-256-CBC
 auth SHA512
 tls-version-min 1.2
+
+# Сертификаты
+<key>
+$(cat key.pem)
+</key>
+
+<cert>
+$(cat cert.pem)
+</cert>
+
+<ca>
+$(cat cert.pem)
+</ca>
+
+<dh>
+$(cat dh.pem)
+</dh>
 EOF
 
 # Выдача `.ovpn` через HTTP
