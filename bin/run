@@ -3,11 +3,11 @@ set -e
 
 echo "🔧 Настройка VPN сервера..."
 
-# Убеждаемся, что туннельный интерфейс существует
-[ -d /dev/net ] || mkdir -p /dev/net
+# Проверяем существование туннельного интерфейса
+mkdir -p /dev/net
 [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
 
-cd /etc/openvpn
+cd /etc/openvpn || { echo "Ошибка: директория /etc/openvpn не найдена!"; exit 1; }
 
 # Создаём файлы, если их нет
 touch placeholder
@@ -15,11 +15,11 @@ touch placeholder
 [ -f dh.pem ] || openssl dhparam -out dh.pem 2048
 [ -f key.pem ] || openssl genrsa -out key.pem 2048
 chmod 600 key.pem
-[ -f csr.pem ] || openssl req -new -key key.pem -out csr.pem -subj /CN=OpenVPN/
-[ -f cert.pem ] || openssl x509 -req -in csr.pem -out cert.pem -signkey key.pem -days 24855
+[ -f csr.pem ] || openssl req -new -key key.pem -out csr.pem -subj "/CN=OpenVPN/"
+[ -f cert.pem ] || openssl x509 -req -in csr.pem -out cert.pem -signkey key.pem -days 3650
 
 # Конфигурация OpenVPN (TCP 443)
-[ -f tcp443.conf ] || cat >tcp443.conf <<EOF
+cat >tcp443.conf <<EOF
 server 192.168.255.0 255.255.255.128
 topology subnet
 verb 3
@@ -45,7 +45,7 @@ status openvpn-status-443.log
 EOF
 
 # Конфигурация OpenVPN (UDP 1194)
-[ -f udp1194.conf ] || cat >udp1194.conf <<EOF
+cat >udp1194.conf <<EOF
 server 192.168.255.128 255.255.255.128
 topology subnet
 verb 3
@@ -71,14 +71,11 @@ status openvpn-status-1194.log
 EOF
 
 # Определяем внешний IP сервера
-MY_IP_ADDR=$(curl -s http://ifconfig.me)
-[ "$MY_IP_ADDR" ] || {
-    echo "Ошибка: не удалось определить внешний IP."
-    exit 1
-}
+MY_IP_ADDR=$(curl -s http://ifconfig.me || echo "127.0.0.1")
+[ "$MY_IP_ADDR" != "127.0.0.1" ] || { echo "Ошибка: не удалось определить внешний IP."; exit 1; }
 
 # Конфигурация клиента OpenVPN
-[ -f client.ovpn ] || cat >client.ovpn <<EOF
+cat >client.ovpn <<EOF
 client
 nobind
 dev tun
@@ -124,23 +121,25 @@ $(cat dh.pem)
 EOF
 
 # Выдача `.ovpn` через HTTP
-[ -f client.http ] || cat >client.http <<EOF
+cat >client.http <<EOF
 HTTP/1.0 200 OK
 Content-Type: application/x-openvpn-profile
-Content-Length: `wc -c client.ovpn`
+Content-Length: $(wc -c < client.ovpn)
 
-`cat client.ovpn`
+$(cat client.ovpn)
 EOF
 
-# Ожидание, пока ВСЕ файлы будут готовы перед запуском OpenVPN
+# Проверка наличия всех файлов перед запуском OpenVPN
 echo "⏳ Ожидание генерации всех файлов..."
 while [ ! -f dh.pem ] || [ ! -f tcp443.conf ] || [ ! -f udp1194.conf ] || [ ! -f client.ovpn ]; do
     sleep 2
     echo "🔄 Генерация файлов ещё не завершена..."
 done
+
 echo "✅ Все файлы созданы, запускаем VPN!"
 
-# Настройка маскировки VPN через STUNNEL (HTTPS)
+# Настройка STUNNEL для маскировки VPN через HTTPS
+mkdir -p /etc/stunnel
 cat > /etc/stunnel/stunnel.conf <<EOF
 [openvpn]
 accept = 443
@@ -155,7 +154,8 @@ stunnel /etc/stunnel/stunnel.conf &
 iptables -t nat -A POSTROUTING -s 192.168.255.0/24 -o eth0 -j MASQUERADE
 
 # Запускаем OpenVPN (TCP + UDP)
-touch tcp443.log udp1194.log http8080.log
-while true ; do openvpn --config tcp443.conf ; done >> tcp443.log &
-while true ; do openvpn --config udp1194.conf ; done >> udp1194.log &
-tail -F *.log
+touch tcp443.log udp1194.log
+(while true; do openvpn --config tcp443.conf; done >> tcp443.log 2>&1) &
+(while true; do openvpn --config udp1194.conf; done >> udp1194.log 2>&1) &
+
+tail -F tcp443.log udp1194.log
