@@ -26,12 +26,23 @@ while [ -f client.http ]; do
         EXEC:'cat client.http' \
         2>> http8080.log &
     
+    # Удаляем предыдущий флаг, если он есть
+    rm -f /tmp/client_downloaded.marker
+
+    echo "🌍 Запускаем HTTP-сервер для раздачи client.ovpn..."
+    socat -d -d \
+        OPENSSL-LISTEN:8080,fork,reuseaddr,key=key.pem,certificate=cert.pem,verify=0 \
+        EXEC:'/usr/local/sbin/serve_client.sh' \
+        2>> http8080.log &
+        
     SOCAT_PID=$!
 
-    # Ожидание завершения передачи файла
     echo "⏳ Ожидание завершения скачивания client.http..."
-    
-    inotifywait -e close_nowrite client.http >/dev/null 2>&1
+
+    # Ожидаем появления файла-флага
+    while [ ! -f /tmp/client_downloaded.marker ]; do
+        sleep 1
+    done
 
     echo "✅ Файл client.http был скачан. Удаляем..."
     sleep 2
