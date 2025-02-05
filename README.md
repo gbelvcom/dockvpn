@@ -12,6 +12,13 @@ CID=$(docker run -d --privileged -p 1194:1194/udp -p 443:443/tcp am6puk/dockvpn)
 docker run -t -i -p 8080:8080 --volumes-from $CID am6puk/dockvpn serveconfig
 ```
 
+```
+docker build -t dockvpn .
+docker run -d --privileged --name dockvpn \
+  -p 443:443 -p 1194:1194/udp -p 8080:8080 \
+  --cap-add=NET_ADMIN dockvpn
+```
+
 Now download the file located at the indicated URL. You will get a
 certificate warning, since the connection is done over SSL, but we are
 using a self-signed certificate. After downloading the configuration,
