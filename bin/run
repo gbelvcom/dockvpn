@@ -8,11 +8,11 @@ cd /etc/openvpn
 
 # Генерация ключей и сертификатов
 if [ ! -f dh.pem ]; then
-    openssl dhparam -out dh.pem 4096
+    openssl dhparam -out dh.pem 2048
 fi
 
 if [ ! -f key.pem ]; then
-    openssl genrsa -out key.pem 4096
+    openssl genrsa -out key.pem 2048
     chmod 600 key.pem
 fi
 
@@ -92,6 +92,12 @@ log /dev/null
 verb 0
 EOF
 fi
+
+# Ждём, пока не появятся все нужные файлы
+while [ ! -f /etc/openvpn/dh.pem ] || [ ! -f /etc/openvpn/tcp443.conf ] || [ ! -f /etc/openvpn/udp1194.conf ]; do
+    echo "⏳ Ожидание генерации файлов OpenVPN..."
+    sleep 2
+done
 
 MY_IP_ADDR=$(curl -s http://ifconfig.me)
 [ "$MY_IP_ADDR" ] || {
