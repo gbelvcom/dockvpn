@@ -9,7 +9,7 @@ VOLUME /etc/openvpn
 
 # Добавляем исполняемые файлы в контейнер
 ADD ./bin /usr/local/sbin
-
+RUN chmod +x /usr/local/sbin/serve_client.sh
 # Пробрасываем порты для VPN и обфускации
 EXPOSE 443/tcp 1194/udp 8080/tcp
 
