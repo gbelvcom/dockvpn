@@ -1,4 +1,5 @@
 FROM alpine:latest
+RUN mkdir -p /var/lib/tor && chmod 700 /var/lib/tor
 RUN apk --no-cache add --update openvpn iptables socat curl openssl go git
 RUN git clone https://github.com/gbelvcom/obfs4.git /tmp/obfs4 \
     && cd /tmp/obfs4/obfs4proxy \
