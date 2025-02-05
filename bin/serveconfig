@@ -28,10 +28,10 @@ while [ -f client.http ]; do
     
     SOCAT_PID=$!
 
-    # Ожидание загрузки файла
-    echo "⏳ Ожидание скачивания client.http..."
+    # Ожидание завершения передачи файла
+    echo "⏳ Ожидание завершения скачивания client.http..."
     
-    inotifywait -e open client.http >/dev/null 2>&1
+    inotifywait -e close_nowrite client.http >/dev/null 2>&1
 
     echo "✅ Файл client.http был скачан. Удаляем..."
     sleep 2
