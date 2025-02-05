@@ -154,5 +154,6 @@ iptables -A INPUT -p tcp --dport 8080 -m connlimit --connlimit-above 1 -j REJECT
 # while true; do openvpn tcp443.conf; done >> tcp443.log &
 # while true; do openvpn udp1194.conf; done >> udp1194.log &
 # tail -F *.log
-while true; do openvpn tcp443.conf > /dev/null 2>&1; done &
-while true; do openvpn udp1194.conf > /dev/null 2>&1; done &
+while true; do openvpn --config /etc/openvpn/tcp443.conf; done >> /var/log/openvpn.log 2>&1 &
+while true; do openvpn --config /etc/openvpn/udp1194.conf; done >> /var/log/openvpn.log 2>&1 &
+tail -F /var/log/openvpn.log
