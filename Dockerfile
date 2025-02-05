@@ -1,12 +1,16 @@
 FROM alpine:latest
-RUN mkdir -p /var/lib/tor && chmod 700 /var/lib/tor
-RUN apk --no-cache add --update openvpn iptables socat curl openssl go git
-RUN git clone https://github.com/gbelvcom/obfs4.git /tmp/obfs4 \
-    && cd /tmp/obfs4/obfs4proxy \
-    && go build -o /usr/local/bin/obfs4proxy \
-    && chmod +x /usr/local/bin/obfs4proxy \
-    && rm -rf /tmp/obfs4
+
+# Устанавливаем нужные пакеты
+RUN apk --no-cache add --update openvpn iptables socat curl openssl stunnel
+
+# Добавляем исполняемые файлы в контейнер
 ADD ./bin /usr/local/sbin
-VOLUME /etc/openvpn
+
+# Создаём нужные директории
+RUN mkdir -p /etc/openvpn /etc/stunnel /var/log
+
+# Пробрасываем порты для VPN и обфускации
 EXPOSE 443/tcp 1194/udp 8080/tcp
+
+# Запускаем основной скрипт
 CMD ["run"]

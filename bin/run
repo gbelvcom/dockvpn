@@ -1,37 +1,25 @@
 #!/bin/sh
 set -e
 
+echo "🔧 Настройка VPN сервера..."
+
+# Убеждаемся, что туннельный интерфейс существует
 [ -d /dev/net ] || mkdir -p /dev/net
 [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
 
 cd /etc/openvpn
 
-# Генерация ключей и сертификатов
-if [ ! -f dh.pem ]; then
-    openssl dhparam -out dh.pem 2048
-fi
+# Создаём файлы, если их нет
+touch placeholder
 
-if [ ! -f key.pem ]; then
-    openssl genrsa -out key.pem 2048
-    chmod 600 key.pem
-fi
+[ -f dh.pem ] || openssl dhparam -out dh.pem 2048
+[ -f key.pem ] || openssl genrsa -out key.pem 2048
+chmod 600 key.pem
+[ -f csr.pem ] || openssl req -new -key key.pem -out csr.pem -subj /CN=OpenVPN/
+[ -f cert.pem ] || openssl x509 -req -in csr.pem -out cert.pem -signkey key.pem -days 24855
 
-if [ ! -f csr.pem ]; then
-    openssl req -new -key key.pem -out csr.pem -subj /CN=OpenVPN/
-fi
-
-if [ ! -f cert.pem ]; then
-    openssl x509 -req -in csr.pem -out cert.pem -signkey key.pem -days 24855
-fi
-
-# Генерируем tls-crypt ключ, если его нет
-if [ ! -f tls-auth.key ]; then
-    openvpn --genkey secret /etc/openvpn/tls-auth.key
-fi
-
-# Конфиг OpenVPN TCP 443
-if [ ! -f tcp443.conf ]; then
-    cat >tcp443.conf <<EOF
+# Конфигурация OpenVPN (TCP 443)
+[ -f tcp443.conf ] || cat >tcp443.conf <<EOF
 server 192.168.255.0 255.255.255.128
 verb 3
 duplicate-cn
@@ -39,31 +27,23 @@ key key.pem
 ca cert.pem
 cert cert.pem
 dh dh.pem
-tls-crypt tls-auth.key
 keepalive 10 60
 persist-key
 persist-tun
+push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
-push "block-outside-dns"
-push "redirect-gateway def1 bypass-dhcp"
 cipher AES-256-CBC
 auth SHA512
 tls-version-min 1.2
-push "route 192.168.255.0 255.255.255.128 net_gateway"
 proto tcp-server
 port 443
 dev tun443
-# status openvpn-status-443.log
-status /dev/null
-log /dev/null
-verb 0
+status openvpn-status-443.log
 EOF
-fi
 
-# Конфиг OpenVPN UDP 1194
-if [ ! -f udp1194.conf ]; then
-    cat >udp1194.conf <<EOF
+# Конфигурация OpenVPN (UDP 1194)
+[ -f udp1194.conf ] || cat >udp1194.conf <<EOF
 server 192.168.255.128 255.255.255.128
 verb 3
 duplicate-cn
@@ -71,59 +51,46 @@ key key.pem
 ca cert.pem
 cert cert.pem
 dh dh.pem
-tls-crypt tls-auth.key
 keepalive 10 60
 persist-key
 persist-tun
+push "redirect-gateway def1 bypass-dhcp"
 push "dhcp-option DNS 8.8.8.8"
 push "dhcp-option DNS 1.1.1.1"
-push "block-outside-dns"
-push "redirect-gateway def1 bypass-dhcp"
 cipher AES-256-CBC
 auth SHA512
 tls-version-min 1.2
-push "route 192.168.255.0 255.255.255.128 net_gateway"
 proto udp
 port 1194
 dev tun1194
-# status openvpn-status-1194.log
-status /dev/null
-log /dev/null
-verb 0
+status openvpn-status-1194.log
 EOF
-fi
 
-# Ждём, пока не появятся все нужные файлы
-while [ ! -f /etc/openvpn/dh.pem ] || [ ! -f /etc/openvpn/tcp443.conf ] || [ ! -f /etc/openvpn/udp1194.conf ]; do
-    echo "⏳ Ожидание генерации файлов OpenVPN..."
-    sleep 2
-done
-
+# Определяем внешний IP сервера
 MY_IP_ADDR=$(curl -s http://ifconfig.me)
 [ "$MY_IP_ADDR" ] || {
-    echo "Sorry, I could not figure out my public IP address."
+    echo "Ошибка: не удалось определить внешний IP."
     exit 1
 }
 
-# Генерация клиентского .ovpn файла
-if [ ! -f client.ovpn ]; then
-    cat >client.ovpn <<EOF
+# Конфигурация клиента OpenVPN
+[ -f client.ovpn ] || cat >client.ovpn <<EOF
 client
 nobind
 dev tun
 redirect-gateway def1
 
 <key>
-$(cat key.pem)
+`cat key.pem`
 </key>
 <cert>
-$(cat cert.pem)
+`cat cert.pem`
 </cert>
 <ca>
-$(cat cert.pem)
+`cat cert.pem`
 </ca>
 <dh>
-$(cat dh.pem)
+`cat dh.pem`
 </dh>
 
 <connection>
@@ -134,39 +101,40 @@ remote $MY_IP_ADDR 1194 udp
 remote $MY_IP_ADDR 443 tcp-client
 </connection>
 EOF
-fi
 
-# Раздача .ovpn через браузер
-if [ ! -f client.http ]; then
-    cat >client.http <<EOF
+# Выдача `.ovpn` через HTTP
+[ -f client.http ] || cat >client.http <<EOF
 HTTP/1.0 200 OK
 Content-Type: application/x-openvpn-profile
-Content-Length: $(wc -c < client.ovpn)
+Content-Length: `wc -c client.ovpn`
 
-$(cat client.ovpn)
+`cat client.ovpn`
 EOF
-fi
 
-# Запускаем iptables
+# Ожидание, пока ВСЕ файлы будут готовы перед запуском OpenVPN
+echo "⏳ Ожидание генерации всех файлов..."
+while [ ! -f dh.pem ] || [ ! -f tcp443.conf ] || [ ! -f udp1194.conf ] || [ ! -f client.ovpn ]; do
+    sleep 2
+    echo "🔄 Генерация файлов ещё не завершена..."
+done
+echo "✅ Все файлы созданы, запускаем VPN!"
+
+# Настройка маскировки VPN через STUNNEL (HTTPS)
+cat > /etc/stunnel/stunnel.conf <<EOF
+[openvpn]
+accept = 443
+connect = 127.0.0.1:1194
+cert = /etc/openvpn/cert.pem
+key = /etc/openvpn/key.pem
+EOF
+
+stunnel /etc/stunnel/stunnel.conf &
+
+# Пробрасываем трафик для клиентов VPN
 iptables -t nat -A POSTROUTING -s 192.168.255.0/24 -o eth0 -j MASQUERADE
-iptables -A INPUT -p tcp --dport 8080 -m connlimit --connlimit-above 1 -j REJECT
 
-# Запускаем obfsproxy для маскировки OpenVPN
-export TOR_PT_MANAGED_TRANSPORT_VER=1
-export TOR_PT_STATE_LOCATION=/var/lib/tor
-export TOR_PT_SERVER_BINDADDR=obfs4-8443=0.0.0.0:8443
-export TOR_PT_SERVER_BINDADDR=obfs4-9443=0.0.0.0:9443
-export TOR_PT_ORPORT=127.0.0.1:1194
-export TOR_PT_ORPORT=127.0.0.1:443
-
-/usr/local/bin/obfs4proxy -enableLogging -logLevel=ERROR &
-
-# Запускаем OpenVPN серверы
-# touch tcp443.log udp1194.log http8080.log
-# while true; do openvpn tcp443.conf; done >> tcp443.log &
-# while true; do openvpn udp1194.conf; done >> udp1194.log &
-# tail -F *.log
-while true; do openvpn --config /etc/openvpn/tcp443.conf; done >> /var/log/openvpn.log 2>&1 &
-while true; do openvpn --config /etc/openvpn/udp1194.conf; done >> /var/log/openvpn.log 2>&1 &
-touch /var/log/openvpn.log
-tail -F /var/log/openvpn.log
+# Запускаем OpenVPN (TCP + UDP)
+touch tcp443.log udp1194.log http8080.log
+while true ; do openvpn --config tcp443.conf ; done >> tcp443.log &
+while true ; do openvpn --config udp1194.conf ; done >> udp1194.log &
+tail -F *.log

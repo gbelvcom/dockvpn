@@ -1,40 +1,46 @@
 #!/bin/sh
 cd /etc/openvpn
 
-# This is a very crude hack to help with race conditions, when starting
-# the conf generator and the conf server at the same time. See #19.
+# Ожидание генерации конфигурационного файла
 sleep 1
 
 [ -f placeholder ] || {
-    echo "Please run the OpenVPN container at least once in normal mode,"
-    echo "to generate the client configuration file. Thank you."
+    echo "❌ Ошибка: Конфигурация OpenVPN не найдена."
+    echo "Пожалуйста, запустите контейнер в обычном режиме, чтобы создать клиентский файл."
     exit 1
 }
 
 while ! [ -f client.http ]; do
-    echo "Waiting for the other container to generate keys and config..."
+    echo "⏳ Ожидание генерации client.http..."
     sleep 3
 done
 
+echo "✅ Файл найден! Ссылка для скачивания:"
 echo "https://$(curl -s https://ifconfig.me):8080/"
 
-# Запускаем socat в фоне
-socat -d -d \
-    OPENSSL-LISTEN:8080,fork,reuseaddr,key=key.pem,certificate=cert.pem,verify=0 \
-    EXEC:'cat client.http' \
-    2>> http8080.log &
+# Запускаем `socat` в фоне
+while [ -f client.http ]; do
+    echo "🌍 Запускаем HTTP-сервер для раздачи client.ovpn..."
+    socat -d -d \
+        OPENSSL-LISTEN:8080,fork,reuseaddr,key=key.pem,certificate=cert.pem,verify=0 \
+        EXEC:'cat client.http' \
+        2>> http8080.log &
+    
+    SOCAT_PID=$!
 
-SOCAT_PID=$!  # Запоминаем PID процесса socat
+    # Ожидание загрузки файла
+    echo "⏳ Ожидание скачивания client.http..."
+    
+    inotifywait -e open client.http >/dev/null 2>&1
 
-# Следим за скачиванием файла и удаляем его после первого доступа
-while true; do
-    if lsof -t client.http > /dev/null; then
-        echo "✅ Файл client.http был скачан. Удаляем..."
-        sleep 2
-        rm -f client.http
-        echo "🚪 Останавливаем HTTP-сервер."
-        kill $SOCAT_PID  # Останавливаем процесс socat
-        break
-    fi
+    echo "✅ Файл client.http был скачан. Удаляем..."
     sleep 2
+    rm -f client.http
+    echo "🚪 Останавливаем HTTP-сервер."
+    kill $SOCAT_PID  # Останавливаем `socat`
+    
+    echo "🔄 Ожидание генерации нового client.http..."
+    while ! [ -f client.http ]; do
+        sleep 3
+    done
 done
