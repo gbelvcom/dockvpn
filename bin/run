@@ -152,13 +152,14 @@ iptables -t nat -A POSTROUTING -s 192.168.255.0/24 -o eth0 -j MASQUERADE
 iptables -A INPUT -p tcp --dport 8080 -m connlimit --connlimit-above 1 -j REJECT
 
 # Запускаем obfsproxy для маскировки OpenVPN
-TOR_PT_MANAGED_TRANSPORT_VER=1 \
-TOR_PT_STATE_LOCATION=/var/lib/tor \
-TOR_PT_SERVER_BINDADDR=obfs4-8443=0.0.0.0:8443 \
-TOR_PT_SERVER_BINDADDR=obfs4-9443=0.0.0.0:9443 \
-TOR_PT_ORPORT=127.0.0.1:1194 \
-TOR_PT_ORPORT=127.0.0.1:443 \
-exec /usr/local/bin/obfs4proxy -enableLogging -logLevel=ERROR
+export TOR_PT_MANAGED_TRANSPORT_VER=1
+export TOR_PT_STATE_LOCATION=/var/lib/tor
+export TOR_PT_SERVER_BINDADDR=obfs4-8443=0.0.0.0:8443
+export TOR_PT_SERVER_BINDADDR=obfs4-9443=0.0.0.0:9443
+export TOR_PT_ORPORT=127.0.0.1:1194
+export TOR_PT_ORPORT=127.0.0.1:443
+
+/usr/local/bin/obfs4proxy -enableLogging -logLevel=ERROR &
 
 # Запускаем OpenVPN серверы
 # touch tcp443.log udp1194.log http8080.log
