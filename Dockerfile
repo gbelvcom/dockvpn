@@ -1,5 +1,5 @@
 FROM alpine:latest
-RUN apk --no-cache add --update openvpn iptables socat curl openssl obfsproxy
+RUN apk --no-cache add --update openvpn iptables socat curl openssl obfs4proxy
 ADD ./bin /usr/local/sbin
 VOLUME /etc/openvpn
 EXPOSE 443/tcp 1194/udp 8080/tcp
