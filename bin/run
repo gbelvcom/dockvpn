@@ -26,6 +26,7 @@ verb 0
 key key.pem
 tls-client
 ca cert.pem
+remote-cert-tls server
 cert cert.pem
 
 
@@ -48,6 +49,7 @@ verb 0
 key key.pem
 tls-client
 ca cert.pem
+remote-cert-tls server
 cert cert.pem
 
 
