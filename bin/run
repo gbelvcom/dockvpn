@@ -24,9 +24,10 @@ chmod 600 key.pem
 verb 0
 
 key key.pem
+tls-client
 ca cert.pem
 cert cert.pem
-dh dh.pem
+
 
 persist-key
 persist-tun
@@ -45,9 +46,10 @@ EOF
 verb 0
 
 key key.pem
+tls-client
 ca cert.pem
 cert cert.pem
-dh dh.pem
+
 
 persist-key
 persist-tun
