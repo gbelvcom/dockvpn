@@ -72,7 +72,7 @@ fi
 client
 nobind
 dev tun
-redirect-gateway def1
+redirect-gateway def1 bypass-dhcp
 
 <key>
 `cat key.pem`
@@ -83,9 +83,6 @@ redirect-gateway def1
 <ca>
 `cat cert.pem`
 </ca>
-<dh>
-`cat dh.pem`
-</dh>
 
 <connection>
 remote $MY_IP_ADDR 1194 udp
