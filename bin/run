@@ -25,8 +25,6 @@ verb 0
 
 key key.pem
 tls-client
-pull-filter ignore "ifconfig-ipv6"
-pull-filter ignore "route-ipv6"
 ca cert.pem
 remote-cert-tls server
 cert cert.pem
@@ -52,8 +50,6 @@ verb 0
 
 key key.pem
 tls-client
-pull-filter ignore "ifconfig-ipv6"
-pull-filter ignore "route-ipv6"
 ca cert.pem
 remote-cert-tls server
 cert cert.pem
@@ -81,16 +77,11 @@ MY_IP_ADDR=$(curl -s http://myip.enix.org/REMOTE_ADDR)
 }
 
 # Generate client
-pull-filter ignore "ifconfig-ipv6"
 pull-filter ignore "route-ipv6" configuration
 [ -f client
-pull-filter ignore "ifconfig-ipv6"
 pull-filter ignore "route-ipv6".ovpn ] || cat >client
-pull-filter ignore "ifconfig-ipv6"
 pull-filter ignore "route-ipv6".ovpn <<EOF
 client
-pull-filter ignore "ifconfig-ipv6"
-pull-filter ignore "route-ipv6"
 nobind
 dev tun
 redirect-gateway def1 bypass-dhcp
@@ -112,27 +103,20 @@ remote $MY_IP_ADDR 1194 udp
 
 <connection>
 remote $MY_IP_ADDR 443 tcp-client
-pull-filter ignore "ifconfig-ipv6"
-pull-filter ignore "route-ipv6"
 </connection>
 EOF
 
 # Serve the client
-pull-filter ignore "ifconfig-ipv6"
 pull-filter ignore "route-ipv6" configuration via HTTP
 [ -f client
-pull-filter ignore "ifconfig-ipv6"
 pull-filter ignore "route-ipv6".http ] || cat >client
-pull-filter ignore "ifconfig-ipv6"
 pull-filter ignore "route-ipv6".http <<EOF
 HTTP/1.0 200 OK
 Content-Type: application/x-openvpn-profile
 Content-Length: $(wc -c client
-pull-filter ignore "ifconfig-ipv6"
 pull-filter ignore "route-ipv6".ovpn)
 
 $(cat client
-pull-filter ignore "ifconfig-ipv6"
 pull-filter ignore "route-ipv6".ovpn)
 EOF
 
