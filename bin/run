@@ -1,35 +1,33 @@
 #!/bin/sh
 set -e
 
-# Ensure /dev/net/tun exists
-[ -d /dev/net ] || mkdir -p /dev/net
-[ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
+[ -d /dev/net ] ||
+    mkdir -p /dev/net
+[ -c /dev/net/tun ] ||
+    mknod /dev/net/tun c 10 200
 
 cd /etc/openvpn
-# Placeholder file to indicate configuration presence
+# This file tells `serveconfig` that there is a config there
 touch placeholder
-
-# Generate Diffie-Hellman parameters if missing
-[ -f dh.pem ] || openssl dhparam -out dh.pem 2048
-
-# Generate key and certificate if missing
-[ -f key.pem ] || openssl genrsa -out key.pem 2048
+[ -f dh.pem ] ||
+    openssl dhparam -out dh.pem 2048
+[ -f key.pem ] ||
+    openssl genrsa -out key.pem 2048
 chmod 600 key.pem
-[ -f csr.pem ] || openssl req -new -key key.pem -out csr.pem -subj "/CN=OpenVPN/"
-[ -f cert.pem ] || openssl x509 -req -in csr.pem -out cert.pem -signkey key.pem -days 24855
+[ -f csr.pem ] ||
+    openssl req -new -key key.pem -out csr.pem -subj /CN=OpenVPN/
+[ -f cert.pem ] ||
+    openssl x509 -req -in csr.pem -out cert.pem -signkey key.pem -days 24855
 
-# Create OpenVPN  missing
 [ -f tcp443.conf ] || cat >tcp443.conf <<EOF
-
-verb 0
-
+server 192.168.255.0 255.255.255.128
+verb 3
+duplicate-cn
 key key.pem
-tls-client
 ca cert.pem
-remote-cert-tls server
 cert cert.pem
-
-
+dh dh.pem
+keepalive 10 60
 persist-key
 persist-tun
 push "dhcp-option DNS 8.8.8.8"
@@ -37,24 +35,20 @@ push "dhcp-option DNS 1.1.1.1"
 push "redirect-gateway def1 bypass-dhcp"
 
 proto tcp-server
-local 0.0.0.0
-explicit-exit-notify 1
 port 443
 dev tun443
 status openvpn-status-443.log
 EOF
 
 [ -f udp1194.conf ] || cat >udp1194.conf <<EOF
-
-verb 0
-
+server 192.168.255.128 255.255.255.128
+verb 3
+duplicate-cn
 key key.pem
-tls-client
 ca cert.pem
-remote-cert-tls server
 cert cert.pem
-
-
+dh dh.pem
+keepalive 10 60
 persist-key
 persist-tun
 push "dhcp-option DNS 8.8.8.8"
@@ -62,40 +56,36 @@ push "dhcp-option DNS 1.1.1.1"
 push "redirect-gateway def1 bypass-dhcp"
 
 proto udp
-local 0.0.0.0
-explicit-exit-notify 1
 port 1194
 dev tun1194
 status openvpn-status-1194.log
 EOF
 
-# Fetch public IP address
-MY_IP_ADDR=$(curl -s http://myip.enix.org/REMOTE_ADDR)
-[ "$MY_IP_ADDR" ] || {
-    echo "Could not determine public IP. Please check connectivity."
+# Определяем внешний IP сервера
+MY_IP_ADDR=$(curl -s http://ifconfig.me)
+if [ -z "$MY_IP_ADDR" ]; then
+    echo "Ошибка: не удалось определить внешний IP."
     exit 1
-}
+fi
 
-# Generate client
-pull-filter ignore "route-ipv6" configuration
-[ -f client
-pull-filter ignore "route-ipv6".ovpn ] || cat >client
-pull-filter ignore "route-ipv6".ovpn <<EOF
+[ -f client.ovpn ] || cat >client.ovpn <<EOF
 client
 nobind
 dev tun
-redirect-gateway def1 bypass-dhcp
+redirect-gateway def1
 
 <key>
-$(cat key.pem)
+`cat key.pem`
 </key>
 <cert>
-$(cat cert.pem)
+`cat cert.pem`
 </cert>
 <ca>
-$(cat cert.pem)
+`cat cert.pem`
 </ca>
-
+<dh>
+`cat dh.pem`
+</dh>
 
 <connection>
 remote $MY_IP_ADDR 1194 udp
@@ -106,28 +96,17 @@ remote $MY_IP_ADDR 443 tcp-client
 </connection>
 EOF
 
-# Serve the client
-pull-filter ignore "route-ipv6" configuration via HTTP
-[ -f client
-pull-filter ignore "route-ipv6".http ] || cat >client
-pull-filter ignore "route-ipv6".http <<EOF
+[ -f client.http ] || cat >client.http <<EOF
 HTTP/1.0 200 OK
 Content-Type: application/x-openvpn-profile
-Content-Length: $(wc -c client
-pull-filter ignore "route-ipv6".ovpn)
+Content-Length: `wc -c client.ovpn`
 
-$(cat client
-pull-filter ignore "route-ipv6".ovpn)
+`cat client.ovpn`
 EOF
 
-# Configure NAT for VPN traffic
 iptables -t nat -A POSTROUTING -s 192.168.255.0/24 -o eth0 -j MASQUERADE
 
-# Touch log files
 touch tcp443.log udp1194.log http8080.log
-
-# Start OpenVPN servers
-while true; do openvpn tcp443.conf; done >> tcp443.log &
-while true; do openvpn udp1194.conf; done >> udp1194.log &
-
+while true ; do openvpn tcp443.conf ; done >> tcp443.log &
+while true ; do openvpn udp1194.conf ; done >> udp1194.log &
 tail -F *.log

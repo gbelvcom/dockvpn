@@ -16,7 +16,7 @@ while ! [ -f client.http ]; do
 done
 
 echo "✅ Файл найден! Ссылка для скачивания:"
-echo "https://$(curl -s https://ifconfig.me):8080/"
+echo "https://$(curl -s https://ifconfig.me):8080/client.ovpn"
 
 # Запускаем `socat` в фоне
 while [ -f client.http ]; do
