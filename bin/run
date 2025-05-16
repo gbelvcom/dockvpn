@@ -1,25 +1,27 @@
 #!/bin/sh
 set -e
 
-[ -d /dev/net ] ||
-    mkdir -p /dev/net
-[ -c /dev/net/tun ] ||
-    mknod /dev/net/tun c 10 200
+# Ensure /dev/net/tun exists
+[ -d /dev/net ] || mkdir -p /dev/net
+[ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
 
 cd /etc/openvpn
-# This file tells `serveconfig` that there is a config there
+# Mark that we intend to serve a config
 touch placeholder
-[ -f dh.pem ] ||
-    openssl dhparam -out dh.pem 2048
-[ -f key.pem ] ||
-    openssl genrsa -out key.pem 2048
-chmod 600 key.pem
-[ -f csr.pem ] ||
-    openssl req -new -key key.pem -out csr.pem -subj /CN=OpenVPN/
-[ -f cert.pem ] ||
-    openssl x509 -req -in csr.pem -out cert.pem -signkey key.pem -days 24855
 
-[ -f tcp443.conf ] || cat >tcp443.conf <<EOF
+# Generate DH, server key/cert if missing
+[ -f dh.pem ] || openssl dhparam -out dh.pem 2048
+[ -f key.pem ] || openssl genrsa -out key.pem 2048
+chmod 600 key.pem
+[ -f csr.pem ] && : || openssl req -new -key key.pem -out csr.pem -subj /CN=OpenVPN/
+[ -f cert.pem ] && : || openssl x509 -req -in csr.pem -signkey key.pem -days 24855 -out cert.pem
+
+# Generate static key for tls-crypt (masking OpenVPN handshake)
+[ -f ta.key ] || openvpn --genkey --secret ta.key
+chmod 600 ta.key
+
+# Create TCP/443 server config
+cat > tcp443.conf <<EOF
 server 192.168.255.0 255.255.255.128
 verb 3
 duplicate-cn
@@ -27,6 +29,7 @@ key key.pem
 ca cert.pem
 cert cert.pem
 dh dh.pem
+tls-crypt ta.key
 keepalive 10 60
 persist-key
 persist-tun
@@ -40,7 +43,8 @@ dev tun443
 status openvpn-status-443.log
 EOF
 
-[ -f udp1194.conf ] || cat >udp1194.conf <<EOF
+# Create UDP/1194 server config
+cat > udp1194.conf <<EOF
 server 192.168.255.128 255.255.255.128
 verb 3
 duplicate-cn
@@ -48,6 +52,7 @@ key key.pem
 ca cert.pem
 cert cert.pem
 dh dh.pem
+tls-crypt ta.key
 keepalive 10 60
 persist-key
 persist-tun
@@ -61,49 +66,58 @@ dev tun1194
 status openvpn-status-1194.log
 EOF
 
-# Определяем внешний IP сервера
+# Determine external IP for client config
 MY_IP_ADDR=$(curl -s http://ifconfig.me)
 if [ -z "$MY_IP_ADDR" ]; then
     echo "Ошибка: не удалось определить внешний IP."
     exit 1
 fi
 
-[ -f client.ovpn ] || cat >client.ovpn <<EOF
+# Create client.ovpn with tls-crypt block
+cat > client.ovpn <<EOF
 client
 nobind
 dev tun
 redirect-gateway def1 bypass-dhcp
+proto udp
 
 <key>
-`cat key.pem`
+$(cat key.pem)
 </key>
 <cert>
-`cat cert.pem`
+$(cat cert.pem)
 </cert>
 <ca>
-`cat cert.pem`
+$(cat cert.pem)
 </ca>
+<tls-crypt>
+$(cat ta.key)
+</tls-crypt>
 
 <connection>
-remote $MY_IP_ADDR 1194 udp
+  remote $MY_IP_ADDR 1194 udp
 </connection>
-
 <connection>
-remote $MY_IP_ADDR 443 tcp-client
+  remote $MY_IP_ADDR 443 tcp
 </connection>
 EOF
 
-[ -f client.http ] || cat >client.http <<EOF
+# Serve client.ovpn over HTTPS (client.http)
+cat > client.http <<EOF
 HTTP/1.0 200 OK
 Content-Type: application/x-openvpn-profile
-Content-Length: `wc -c client.ovpn`
+Content-Length: $(wc -c < client.ovpn)
 
-`cat client.ovpn`
+$(cat client.ovpn)
 EOF
 
+# Configure NAT
 iptables -t nat -A POSTROUTING -s 192.168.255.0/24 -o eth0 -j MASQUERADE
 
+# Start OpenVPN servers
 touch tcp443.log udp1194.log http8080.log
-while true ; do openvpn tcp443.conf ; done >> tcp443.log &
-while true ; do openvpn udp1194.conf ; done >> udp1194.log &
+while true; do openvpn tcp443.conf; done >> tcp443.log &
+while true; do openvpn udp1194.conf; done >> udp1194.log &
+
+# Tail logs
 tail -F *.log
